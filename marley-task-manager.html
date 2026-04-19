@@ -1,1 +1,287 @@
-<!-- Use your existing marley-task-manager.html here -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Marley – Task Manager</title>
+
+  <!-- PWA -->
+  manifest.json
+  <meta name="theme-color" content="#081848">
+
+  <!-- iOS PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  icon-192.png
+
+  <!-- Fonts -->
+  https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap
+
+  <style>
+    :root{
+      --bg:#081848;
+      --surface:#102a6e;
+      --surface2:#173b8c;
+      --text:#ffffff;
+      --muted:#b7c6ff;
+      --ok:#21ba45;
+      --warn:#fbbd08;
+      --bad:#ff4444;
+    }
+
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:Inter,sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      height:100vh;
+      display:flex;
+      flex-direction:column;
+    }
+
+    header{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding:12px 16px;
+      background:var(--surface);
+    }
+
+    .logo{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-weight:700;
+      font-size:16px;
+    }
+
+    .logo img{
+      width:36px;
+      height:36px;
+      border-radius:8px;
+    }
+
+    #sync{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      font-size:11px;
+      color:var(--muted);
+      margin-right:12px;
+    }
+
+    .dot{
+      width:8px;
+      height:8px;
+      border-radius:50%;
+    }
+
+    .btn{
+      background:var(--surface2);
+      border:none;
+      color:var(--text);
+      padding:6px 12px;
+      border-radius:6px;
+      font-weight:600;
+      cursor:pointer;
+    }
+
+    .btn.primary{background:#2f5cff}
+
+    #main{
+      flex:1;
+      padding:16px;
+      overflow:auto;
+    }
+
+    .task{
+      background:var(--surface);
+      padding:12px;
+      border-radius:10px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:8px;
+    }
+
+    .task.done{
+      opacity:0.45;
+      text-decoration:line-through;
+    }
+
+    #loading{
+      position:fixed;
+      inset:0;
+      background:var(--bg);
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:20px;
+      z-index:100;
+    }
+
+    .spinner{
+      width:32px;
+      height:32px;
+      border:3px solid rgba(255,255,255,0.2);
+      border-top-color:#fff;
+      border-radius:50%;
+      animation:spin .8s linear infinite;
+    }
+
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+
+<body>
+
+<!-- LOADING -->
+<div id="loading">
+  icon-512.png
+  <div class="spinner"></div>
+</div>
+
+<header>
+  <div class="logo">
+    icon-192.png
+    Marley – Task Manager
+  </div>
+
+  <div style="display:flex;align-items:center">
+    <div id="sync">
+      <span id="sync-dot" class="dot"></span>
+      <span id="sync-text">Offline</span>
+    </div>
+    <button class="btn" onclick="exportCsv()">Export</button>
+    <button class="btn primary" onclick="addTask()">+ Add</button>
+  </div>
+</header>
+
+<div id="main"></div>
+
+<script>
+const SHEET_URL =
+  "https://script.google.com/macros/s/AKfycbzwuyLQdHAuwI12WXOWm1iy-EkpebRkMQSD65xS4kGNs9olWkK2rY05Ry6glNLiCS8n3A/exec";
+
+const STORE_KEY = "marley_tasks_v3";
+let S = JSON.parse(localStorage.getItem(STORE_KEY) || '{"tasks":[],"nextId":1}');
+
+function save(){localStorage.setItem(STORE_KEY,JSON.stringify(S))}
+
+function setSync(state,text){
+  const d=document.getElementById("sync-dot");
+  const t=document.getElementById("sync-text");
+  t.textContent=text;
+  d.style.background =
+    state==="ok" ? "var(--ok)" :
+    state==="warn" ? "var(--warn)" :
+    "var(--bad)";
+}
+
+async function api(action, body){
+  const res = await fetch(SHEET_URL+"?action="+action,{
+    method: body?"POST":"GET",
+    headers:{"Content-Type":"text/plain"},
+    body: body?JSON.stringify(body):null
+  });
+  return res.json();
+}
+
+function render(){
+  const m=document.getElementById("main");
+  m.innerHTML="";
+  if(!S.tasks.length){
+    m.innerHTML="<div style='opacity:.6'>No tasks yet</div>";
+    return;
+  }
+  S.tasks.forEach(t=>{
+    const d=document.createElement("div");
+    d.className="task"+(t.done?" done":"");
+    d.innerHTML=`
+      <div>${t.title}</div>
+      <button class="btn" onclick="toggleDone(${t.id})">${t.done?"↺":"✓"}</button>
+    `;
+    m.appendChild(d);
+  });
+}
+
+function addTask(){
+  const title=prompt("Task");
+  if(!title)return;
+  const t={id:S.nextId++,title,done:false,updatedAt:new Date().toISOString()};
+  S.tasks.push(t);
+  save();
+  render();
+  syncTask(t);
+}
+
+function toggleDone(id){
+  const t=S.tasks.find(x=>x.id===id);
+  if(!t)return;
+  t.done=!t.done;
+  t.updatedAt=new Date().toISOString();
+  save();
+  render();
+  syncTask(t);
+}
+
+async function syncTask(t){
+  try{
+    setSync("warn","Syncing");
+    await api("saveTask",t);
+    setSync("ok","Synced");
+  }catch{
+    setSync("bad","Offline");
+  }
+}
+
+async function boot(){
+  try{
+    setSync("warn","Syncing");
+    const remote=await api("getAll");
+    if(remote?.tasks){
+      const map={};
+      S.tasks.forEach(t=>map[t.id]=t);
+      remote.tasks.forEach(rt=>{
+        const lt=map[rt.id];
+        if(!lt||new Date(rt.updatedAt||0)>new Date(lt.updatedAt||0)){
+          map[rt.id]=rt;
+        }
+      });
+      S.tasks=Object.values(map);
+      S.nextId=Math.max(S.nextId,...S.tasks.map(t=>t.id+1));
+      save();
+      setSync("ok","Synced");
+    }
+  }catch{
+    setSync("bad","Offline");
+  }finally{
+    document.getElementById("loading").style.display="none";
+    render();
+  }
+}
+
+function exportCsv(){
+  if(!S.tasks.length)return;
+  const rows=[
+    ["Task","Completed","UpdatedAt"],
+    ...S.tasks.map(t=>[`"${t.title.replace(/"/g,'""')}"`,t.done?"TRUE":"FALSE",t.updatedAt])
+  ];
+  const blob=new Blob([rows.map(r=>r.join(",")).join("\n")],{type:"text/csv"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="marley-tasks.csv";
+  a.click();
+}
+
+boot();
+
+if("serviceWorker"in navigator){
+  navigator.serviceWorker.register("sw.js");
+}
+</script>
+
+</body>
+</html>
