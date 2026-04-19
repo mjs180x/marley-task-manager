@@ -1,0 +1,8 @@
+{
+  "name": "Marley Task Manager",
+  "short_name": "Marley Tasks",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#1e1e2a",
+  "theme_color": "#1e1e2a"
+}
